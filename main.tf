@@ -26,10 +26,13 @@ resource "aws_iam_policy" "lambda_policy" {
     Statement = [
       {
         Action = [
-          "dynamodb:PutItem"
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
         ],
         Effect   = "Allow",
-        Resource = "*"
+        Resource = aws_dynamodb_table.study_notes.arn
       },
       {
         Action = [
@@ -113,4 +116,25 @@ resource "aws_lambda_permission" "allow_api_gateway" {
   function_name = aws_lambda_function.summarize_notes_lambda.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
+}
+
+#GET
+resource "aws_apigatewayv2_route" "get_note_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /note"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+# PUT
+resource "aws_apigatewayv2_route" "update_note_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "PUT /note"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+# DELETE 
+resource "aws_apigatewayv2_route" "delete_note_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "DELETE /note"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
