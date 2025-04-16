@@ -50,6 +50,7 @@ Create a .env file in the root directory and add your API URL:
 ```
 REACT_APP_API_URL=https://your-api-id.execute-api.eu-north-1.amazonaws.com
 ```
+You can find your API in API Gateway > APIs > notes-api > Default endpoint
 
 In src/NotesInterface.js, access the API URL with:
 
