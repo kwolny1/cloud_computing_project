@@ -26,14 +26,15 @@ Download and install the **LTS version** from [https://nodejs.org](https://nodej
 ```bash
 npx create-react-app notes-interface
 cd notes-interface
+```
 
 ### 3. Create a new file src/NotesInterface.js
 3. Add Interface File
-Create a new file: src/NotesInterface.js
+Put NotesInterface.js file in src: src/NotesInterface.js 
 
 ### 4.  Update App.js
 Replace the contents of src/App.js with:
-
+```
 import NotesInterface from './NotesInterface';
 
 function App() {
@@ -41,19 +42,26 @@ function App() {
 }
 
 export default App;
+```
 
 ### 5. Set API URL
 Create a .env file in the root directory and add your API URL:
 
-env
+```
 REACT_APP_API_URL=https://your-api-id.execute-api.eu-north-1.amazonaws.com
+```
+
 In src/NotesInterface.js, access the API URL with:
 
+```
 const API_BASE = process.env.REACT_APP_API_URL;
+```
 
 ### 6. Run the App
 In cmd in notes-interface file run 
+```
 npm start
+```
 
 Then open your browser at:
 http://localhost:3000 🎉
