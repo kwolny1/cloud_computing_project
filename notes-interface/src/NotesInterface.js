@@ -8,57 +8,88 @@ export default function App() {
   const [existingText, setExistingText] = useState('');
   const [response, setResponse] = useState('');
 
-  const handlePost = async () => {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventTime, setEventTime] = useState('');
+
+  const showResponse = async (fetchPromise) => {
     try {
-      const res = await fetch(`${API_URL}/summarize`, {
+      const res = await fetchPromise;
+      const contentType = res.headers.get('content-type');
+      const isJson = contentType && contentType.includes('application/json');
+      const data = isJson ? await res.json() : await res.text();
+
+      if (!res.ok) {
+        setResponse(`❌ Error ${res.status}:\n${JSON.stringify(data, null, 2)}`);
+      } else {
+        setResponse(JSON.stringify(data, null, 2));
+      }
+    } catch (e) {
+      setResponse(`💥 Fetch error: ${e.message}`);
+    }
+  };
+
+  // Note handlers
+  const handlePost = () => {
+    showResponse(
+      fetch(`${API_URL}/summarize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: newText })
-      });
-      const data = await res.json();
-      setResponse(JSON.stringify(data, null, 2));
-      if (data.note_id) setNoteId(data.note_id); // auto-fill for testing
-    } catch (e) {
-      setResponse("POST Error: " + e.message);
-    }
+      })
+    );
   };
 
-  const handleGet = async () => {
-    try {
-      const res = await fetch(`${API_URL}/note?note_id=${noteId}`, {
-        method: 'GET'
-      });
-      const data = await res.json();
-      setResponse(JSON.stringify(data, null, 2));
-    } catch (e) {
-      setResponse("GET Error: " + e.message);
-    }
+  const handleGet = () => {
+    showResponse(fetch(`${API_URL}/note?note_id=${noteId}`, { method: 'GET' }));
   };
 
-  const handlePut = async () => {
-    try {
-      const res = await fetch(`${API_URL}/note`, {
+  const handlePut = () => {
+    showResponse(
+      fetch(`${API_URL}/note`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note_id: noteId, text: existingText })
-      });
-      const data = await res.json();
-      setResponse(JSON.stringify(data, null, 2));
-    } catch (e) {
-      setResponse("PUT Error: " + e.message);
-    }
+      })
+    );
   };
 
-  const handleDelete = async () => {
-    try {
-      const res = await fetch(`${API_URL}/note?note_id=${noteId}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json();
-      setResponse(JSON.stringify(data, null, 2));
-    } catch (e) {
-      setResponse("DELETE Error: " + e.message);
+  const handleDelete = () => {
+    showResponse(fetch(`${API_URL}/note?note_id=${noteId}`, { method: 'DELETE' }));
+  };
+
+  // PDF upload handler
+  const handleUploadPDF = () => {
+    if (!selectedFile) {
+      setResponse('❗ Please select a PDF file.');
+      return;
     }
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    showResponse(
+      fetch(`${API_URL}/upload-pdf`, {
+        method: 'POST',
+        body: formData
+      })
+    );
+  };
+
+  // Event scheduler
+  const handleScheduleEvent = () => {
+    if (!eventTitle || !eventTime) {
+      setResponse('❗ Please fill out both event title and time.');
+      return;
+    }
+
+    showResponse(
+      fetch(`${API_URL}/schedule-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: eventTitle, time: eventTime })
+      })
+    );
   };
 
   return (
@@ -96,6 +127,31 @@ export default function App() {
       <button onClick={handleGet}>Get Note</button>
       <button onClick={handlePut}>Update Note</button>
       <button onClick={handleDelete}>Delete Note</button>
+
+      <hr />
+
+      <h2>📄 Upload PDF</h2>
+      <input type="file" accept="application/pdf" onChange={(e) => setSelectedFile(e.target.files[0])} />
+      <br /><br />
+      <button onClick={handleUploadPDF}>Upload PDF</button>
+
+      <hr />
+
+      <h2>📅 Schedule Event</h2>
+      <input
+        type="text"
+        placeholder="Event Title"
+        value={eventTitle}
+        onChange={(e) => setEventTitle(e.target.value)}
+        style={{ marginRight: '10px' }}
+      />
+      <input
+        type="datetime-local"
+        value={eventTime}
+        onChange={(e) => setEventTime(e.target.value)}
+      />
+      <br /><br />
+      <button onClick={handleScheduleEvent}>Schedule</button>
 
       <hr />
 

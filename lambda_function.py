@@ -2,36 +2,46 @@ import json
 import boto3
 import os
 import uuid
+import base64
 from datetime import datetime
 import logging
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ.get('DYNAMO_TABLE', 'StudyNotes'))
+s3 = boto3.client('s3')
+
+notes_table = dynamodb.Table(os.environ.get('DYNAMO_TABLE', 'StudyNotes'))
+events_table = dynamodb.Table(os.environ.get('EVENT_TABLE', 'ScheduledEvents'))
+bucket_name = os.environ.get('PDF_BUCKET')
 
 def lambda_handler(event, context):
     method = event.get("requestContext", {}).get("http", {}).get("method", event.get("httpMethod", "GET"))
+    route = event.get("rawPath", "")
 
-    if method == 'POST':
+    if route == "/summarize" and method == "POST":
         return handle_post(event)
-    elif method == 'GET':
+    elif route == "/note" and method == "GET":
         return handle_get(event)
-    elif method == 'PUT':
+    elif route == "/note" and method == "PUT":
         return handle_update(event)
-    elif method == 'DELETE':
+    elif route == "/note" and method == "DELETE":
         return handle_delete(event)
+    elif route == "/upload-pdf" and method == "POST":
+        return handle_pdf_upload(event)
+    elif route == "/schedule-event" and method == "POST":
+        return handle_schedule_event(event)
     else:
-        return {
-            'statusCode': 405,
-            'body': json.dumps({'error': f'Method {method} not allowed'})
-        }
-    
+        return _response(404, {"error": f"No handler for {method} {route}"})
+
 def _response(status_code, body):
     return {
         'statusCode': status_code,
-        'body': json.dumps(body)
+        'body': json.dumps(body),
+        'headers': {'Content-Type': 'application/json'}
     }
+
 
 def handle_post(event):
     try:
@@ -64,7 +74,7 @@ def handle_post(event):
                 'created_at': datetime.utcnow().isoformat()
             }
             
-            table.put_item(Item=item)
+            notes_table.put_item(Item=item)
             return _response(200, item)
         except Exception as e:
             logger.error(f"Error processing request: {str(e)}")
@@ -79,7 +89,7 @@ def handle_get(event):
     if not note_id:
         return {'statusCode': 400, 'body': json.dumps({'error': 'note_id required'})}
 
-    res = table.get_item(Key={'note_id': note_id})
+    res = notes_table.get_item(Key={'note_id': note_id})
     item = res.get('Item')
     if not item:
         return {'statusCode': 404, 'body': json.dumps({'error': 'Note not found'})}
@@ -95,7 +105,7 @@ def handle_update(event):
         return {'statusCode': 400, 'body': json.dumps({'error': 'note_id and text required'})}
 
     # You can update original_text or key_phrases or both
-    table.update_item(
+    notes_table.update_item(
         Key={'note_id': note_id},
         UpdateExpression="SET original_text = :t, updated_at = :u",
         ExpressionAttributeValues={
@@ -111,5 +121,43 @@ def handle_delete(event):
     if not note_id:
         return {'statusCode': 400, 'body': json.dumps({'error': 'note_id required'})}
 
-    table.delete_item(Key={'note_id': note_id})
+    notes_table.delete_item(Key={'note_id': note_id})
     return {'statusCode': 200, 'body': json.dumps({'message': 'Note deleted'})}
+
+def handle_pdf_upload(event):
+    try:
+        content_type = event['headers'].get('content-type') or event['headers'].get('Content-Type')
+        if not content_type or 'multipart/form-data' not in content_type:
+            return _response(400, {"error": "Expected multipart/form-data"})
+
+        body = base64.b64decode(event['body'])
+        filename = f"{str(uuid.uuid4())}.pdf"
+
+        s3.put_object(Bucket=bucket_name, Key=filename, Body=body, ContentType='application/pdf')
+
+        return _response(200, {"message": "PDF uploaded successfully", "file": filename})
+    except Exception as e:
+        logger.error(f"PDF upload error: {e}")
+        return _response(500, {"error": "Upload failed", "details": str(e)})
+
+def handle_schedule_event(event):
+    try:
+        data = json.loads(event['body'])
+        event_id = str(uuid.uuid4())
+        title = data.get('title')
+        time = data.get('time')
+
+        if not title or not time:
+            return _response(400, {"error": "Missing title or time"})
+
+        item = {
+            "event_id": event_id,
+            "title": title,
+            "time": time,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        events_table.put_item(Item=item)
+        return _response(200, item)
+    except Exception as e:
+        logger.error(f"Schedule error: {e}")
+        return _response(500, {"error": "Failed to schedule event", "details": str(e)})
