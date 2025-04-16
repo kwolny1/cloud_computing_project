@@ -3,6 +3,9 @@ import boto3
 import os
 import uuid
 from datetime import datetime
+import logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ.get('DYNAMO_TABLE', 'StudyNotes'))
@@ -23,27 +26,53 @@ def lambda_handler(event, context):
             'statusCode': 405,
             'body': json.dumps({'error': f'Method {method} not allowed'})
         }
-
-def handle_post(event):
-    comprehend = boto3.client('comprehend')
-    body = json.loads(event.get('body', '{}'))
-    user_text = body.get('text', '')
-
-    if not user_text.strip():
-        return {'statusCode': 400, 'body': json.dumps({'error': 'No text provided.'})}
-
-    response = comprehend.detect_key_phrases(Text=user_text, LanguageCode='en')
-    key_phrases = [p['Text'] for p in response['KeyPhrases']]
-
-    item = {
-        'note_id': str(uuid.uuid4()),
-        'original_text': user_text,
-        'key_phrases': key_phrases,
-        'created_at': datetime.utcnow().isoformat()
+    
+def _response(status_code, body):
+    return {
+        'statusCode': status_code,
+        'body': json.dumps(body)
     }
 
-    table.put_item(Item=item)
-    return {'statusCode': 200, 'body': json.dumps({'message': 'Note saved.', 'note_id': item['note_id']})}
+def handle_post(event):
+    try:
+        logger.info("Received event: %s", json.dumps(event))
+        # comprehend = boto3.client('comprehend')
+        
+        # More robust body parsing
+        try:
+            if 'body' in event:
+                body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+            else:
+                body = {}
+        except json.JSONDecodeError:
+            logger.error("Failed to parse request body")
+            return _response(400, {'error': 'Invalid JSON in request body'})
+        
+        user_text = body.get('text', '')
+        
+        if not user_text.strip():
+            return _response(400, {'error': 'No text provided.'})
+
+        try:
+            # response = comprehend.detect_key_phrases(Text=user_text, LanguageCode='en')
+            # key_phrases = [p['Text'] for p in response['KeyPhrases']]
+            
+            item = {
+                'note_id': str(uuid.uuid4()),
+                'original_text': user_text,
+                'key_phrases': "Unavailable in this region",
+                'created_at': datetime.utcnow().isoformat()
+            }
+            
+            table.put_item(Item=item)
+            return _response(200, item)
+        except Exception as e:
+            logger.error(f"Error processing request: {str(e)}")
+            return _response(500, {'error': 'Failed to process note', 'details': str(e)})
+            
+    except Exception as e:
+        logger.error(f"Unhandled exception: {str(e)}")
+        return _response(500, {'error': 'Internal server error', 'details': str(e)})
 
 def handle_get(event):
     note_id = event.get('queryStringParameters', {}).get('note_id')
@@ -55,7 +84,7 @@ def handle_get(event):
     if not item:
         return {'statusCode': 404, 'body': json.dumps({'error': 'Note not found'})}
 
-    return {'statusCode': 200, 'body': json.dumps(item)}
+    return _response(200, item)
 
 def handle_update(event):
     body = json.loads(event.get('body', '{}'))

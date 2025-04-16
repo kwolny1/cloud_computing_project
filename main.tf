@@ -88,6 +88,12 @@ resource "aws_lambda_function" "summarize_notes_lambda" {
 resource "aws_apigatewayv2_api" "api" {
   name          = "notes-api"
   protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins = ["*"]
+    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers = ["Content-Type"]
+  }
 }
 
 resource "aws_apigatewayv2_integration" "lambda_integration" {
@@ -98,7 +104,7 @@ resource "aws_apigatewayv2_integration" "lambda_integration" {
   payload_format_version = "2.0"
 }
 
-resource "aws_apigatewayv2_route" "route" {
+resource "aws_apigatewayv2_route" "post_note_route" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "POST /summarize"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
