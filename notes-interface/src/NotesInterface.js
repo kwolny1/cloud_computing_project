@@ -94,7 +94,7 @@ export default function App() {
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'Arial' }}>
-      <h2>Create a New Note</h2>
+      <h2>Create a New Note!</h2>
       <textarea
         rows="4"
         cols="50"

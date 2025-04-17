@@ -53,7 +53,7 @@ resource "aws_iam_role" "lambda_exec_role" {
 
 # Lambda policy for DynamoDB, Comprehend, Logs
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_dynamodb_comprehend_policy"
+  name        = "lambda_dynamodb_comprehend_policy2"
   description = "Allow Lambda to use DynamoDB and Comprehend"
 
   policy = jsonencode({
