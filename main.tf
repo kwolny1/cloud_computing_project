@@ -53,7 +53,7 @@ resource "aws_iam_role" "lambda_exec_role" {
 
 # Lambda policy for DynamoDB, Comprehend, Logs
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_dynamodb_comprehend_policy2"
+  name        = "lambda_dynamodb_comprehend_policy"
   description = "Allow Lambda to use DynamoDB and Comprehend"
 
   policy = jsonencode({
@@ -81,6 +81,36 @@ resource "aws_iam_policy" "lambda_policy" {
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents"
+        ],
+        Effect   = "Allow",
+        Resource = "*"
+      },
+      {
+        Action = "sns:Publish",
+        Effect = "Allow",
+        Resource = aws_sns_topic.note_notifications.arn
+      },
+      {
+        Action = [
+          "textract:AnalyzeDocument",
+          "textract:DetectDocumentText"
+        ],
+        Effect = "Allow",
+        Resource = "*"
+      },
+      {
+        Action = [
+          "comprehend:DetectSentiment",
+          "comprehend:DetectEntities",
+          "comprehend:DetectSyntax",
+          "comprehend:DetectDominantLanguage"
+        ],
+        Effect = "Allow",
+        Resource = "*"
+      },
+      {
+        Action = [
+          "events:PutEvents"
         ],
         Effect   = "Allow",
         Resource = "*"
@@ -207,4 +237,37 @@ resource "aws_lambda_permission" "allow_api_gateway" {
   function_name = aws_lambda_function.summarize_notes_lambda.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
+}
+
+resource "aws_sns_topic" "note_notifications" {
+  name = "note-notifications"
+}
+
+resource "aws_sns_topic_subscription" "email_sub" {
+  topic_arn = aws_sns_topic.note_notifications.arn
+  protocol  = "email"
+  endpoint  = "youremail@example.com"  # Replace with your real email
+}
+
+resource "aws_cloudwatch_event_rule" "note_created_rule" {
+  name        = "note-created-rule"
+  description = "Trigger Lambda when a new note is created"
+  event_pattern = jsonencode({
+    source = ["custom.notes"]
+    detail-type = ["NoteCreated"]
+  })
+}
+
+resource "aws_cloudwatch_event_target" "lambda_target" {
+  rule      = aws_cloudwatch_event_rule.note_created_rule.name
+  target_id = "summarizeLambdaTarget"
+  arn       = aws_lambda_function.summarize_notes_lambda.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.summarize_notes_lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.note_created_rule.arn
 }
