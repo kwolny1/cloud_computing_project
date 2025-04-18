@@ -1,69 +1,114 @@
-# Cloud Computing
-1. set up aws account on https://aws.amazon.com
-2. download terraform from https://developer.hashicorp.com/terraform/install
-3. in cmd, go to folder with main.tf 
-4. run:\
-"your_path_to_downloaded_terraform\terraform.exe" init\
-"your_path_to_downloaded_terraform\terraform.exe" plan\
-"your_path_to_downloaded_terraform\terraform.exe" apply\
-enter 'yes' value when asked
-5. check aws webpage if stuff that .tf code should do is done (Lambda->Functions, DynamoDB->Tables, API Gateway->APIs)
-6. You don't need lambda_function.zip!! Delete it!
+# 📝 Notes Interface - Cloud Computing Project
 
-# 📝 Notes Interface
+A React-based interface for managing notes with AWS backend (Lambda, DynamoDB, API Gateway, S3, and CloudFront).
 
-A simple React-based interface for managing notes.
+## 🌐 AWS Infrastructure Setup
 
-## 🚀 Getting Started
+### Set up AWS account
+Create an account at https://aws.amazon.com
 
-Follow these steps to set up and run the project locally.
+### Install Terraform
+Download from https://developer.hashicorp.com/terraform/install
 
-### 1. Install Node.js  
-Download and install the **LTS version** from [https://nodejs.org](https://nodejs.org)
+### Initialize and deploy infrastructure
+In your project directory (where main.tf is located):
 
----
-
-### 2. Create the React App  
 ```bash
-npx create-react-app notes-interface
-cd notes-interface
+terraform init
+terraform plan
+terraform apply
+```
+Enter yes when prompted.
+
+### Verify resources
+Check the AWS console for created resources:
+
+- Lambda → Functions
+- DynamoDB → Tables
+- API Gateway → APIs
+- S3 → Buckets
+- CloudFront → Distributions
+
+### Get CloudFront URL
+After deployment, run:
+
+```bash
+terraform output cloudfront_domain
+```
+This will display your production URL.
+
+## 💻 Frontend Development Setup
+
+### Prerequisites
+Node.js LTS version from https://nodejs.org
+
+### Installation
+Install dependencies
+Navigate to notes-interface folder and run:
+
+```bash
+npm install
+npm install @mui/material @mui/icons-material @emotion/react @emotion/styled
+npm install react-router-dom @mui/x-date-pickers date-fns axios
 ```
 
-### 3. Create a new file src/NotesInterface.js
-3. Add Interface File
-Put NotesInterface.js file in src: src/NotesInterface.js 
+### Configure environment
+Create a .env file in notes-interface with:
 
-### 4.  Update App.js
-Replace the contents of src/App.js with:
-```
-import NotesInterface from './NotesInterface';
+env
+"REACT_APP_API_URL=https://your-api-id.execute-api.eu-north-1.amazonaws.com"
+Find your API endpoint in AWS Console → API Gateway → APIs → notes-api → Stages → $default → Invoke URL
 
-function App() {
-  return <NotesInterface />;
-}
+### Run development server
 
-export default App;
-```
-
-### 5. Set API URL
-Create a .env file in the root directory and add your API URL:
-
-```
-REACT_APP_API_URL=https://your-api-id.execute-api.eu-north-1.amazonaws.com
-```
-You can find your API in API Gateway > APIs > notes-api > Default endpoint
-
-In src/NotesInterface.js, access the API URL with:
-
-```
-const API_BASE = process.env.REACT_APP_API_URL;
-```
-
-### 6. Run the App
-In cmd in notes-interface file run 
-```
+```bash
 npm start
 ```
+The app will open at http://localhost:3000
 
-Then open your browser at:
-http://localhost:3000 🎉
+### Production Build
+Create production build
+
+```bash
+npm run build
+```
+
+Deploy to S3
+
+```bash
+aws s3 sync build/ s3://your-bucket-name --delete
+```
+
+🚀 Project Structure
+
+/
+├── main.tf                 # Terraform infrastructure
+├── lambda_function.py      # Lambda function code
+└── notes-interface/        # React frontend
+    ├── public/             # Static files
+    ├── src/                # Source code
+    │   ├── components/     # React components
+    │   ├── services/       # API service layer
+    │   └── App.js          # Main application
+    ├── package.json        # Dependencies
+    └── .env                # Environment variables
+
+🔧 Troubleshooting
+
+CloudFront not updating?
+Create cache invalidation:
+
+```bash
+aws cloudfront create-invalidation --distribution-id YOUR_DISTRIBUTION_ID --paths \"/*\"
+```
+
+API Gateway CORS issues?
+Verify CORS settings in main.tf and ensure your .env has the correct API URL.
+
+React Router not working?
+Ensure you're using either:
+
+- HashRouter for S3 hosting, or
+- BrowserRouter with proper CloudFront error page redirects
+
+The production app will be available at the CloudFront URL after deployment

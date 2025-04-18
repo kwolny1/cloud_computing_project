@@ -24,6 +24,8 @@ def lambda_handler(event, context):
         return handle_post(event)
     elif route == "/note" and method == "GET":
         return handle_get(event)
+    elif route == "/notes" and method == "GET":  # Nueva ruta
+        return handle_get_notes(event)
     elif route == "/note" and method == "PUT":
         return handle_update(event)
     elif route == "/note" and method == "DELETE":
@@ -96,6 +98,22 @@ def handle_get(event):
 
     return _response(200, item)
 
+def handle_get_notes(event):
+    try:
+        # Escanear la tabla para obtener todos los items
+        response = notes_table.scan()
+        items = response.get('Items', [])
+        
+        # Si hay más datos (paginación DynamoDB)
+        while 'LastEvaluatedKey' in response:
+            response = notes_table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+            items.extend(response.get('Items', []))
+        
+        return _response(200, {"notes": items})
+    except Exception as e:
+        logger.error(f"Error getting all notes: {str(e)}")
+        return _response(500, {'error': 'Failed to get notes', 'details': str(e)})
+
 def handle_update(event):
     body = json.loads(event.get('body', '{}'))
     note_id = body.get('note_id')
@@ -145,17 +163,23 @@ def handle_schedule_event(event):
         data = json.loads(event['body'])
         event_id = str(uuid.uuid4())
         title = data.get('title')
-        time = data.get('time')
+        description = data.get('description')
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
 
-        if not title or not time:
-            return _response(400, {"error": "Missing title or time"})
+        if not title or not start_time or not end_time:
+            return _response(400, {"error": "Missing required fields: title, start_time or end_time"})
 
         item = {
             "event_id": event_id,
             "title": title,
-            "time": time,
-            "created_at": datetime.utcnow().isoformat()
+            "description": description or "",  # Campo opcional
+            "start_time": start_time,
+            "end_time": end_time,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
         }
+        
         events_table.put_item(Item=item)
         return _response(200, item)
     except Exception as e:

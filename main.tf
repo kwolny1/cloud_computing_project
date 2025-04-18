@@ -33,6 +33,18 @@ resource "aws_dynamodb_table" "scheduled_events" {
     name = "event_id"
     type = "S"
   }
+
+  attribute {
+    name = "start_time"
+    type = "S"
+  }
+
+  # Índice secundario opcional para búsquedas por fecha
+  global_secondary_index {
+    name            = "StartTimeIndex"
+    hash_key        = "start_time"
+    projection_type = "ALL"
+  }
 }
 
 # IAM role for Lambda
@@ -64,7 +76,8 @@ resource "aws_iam_policy" "lambda_policy" {
           "dynamodb:PutItem",
           "dynamodb:GetItem",
           "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem"
+          "dynamodb:DeleteItem",
+          "dynamodb:Scan"
         ],
         Effect   = "Allow",
         Resource = aws_dynamodb_table.study_notes.arn
@@ -134,8 +147,17 @@ resource "aws_iam_policy" "lambda_pdf_event_policy" {
       },
       {
         Effect = "Allow",
-        Action = ["dynamodb:PutItem"],
-        Resource = aws_dynamodb_table.scheduled_events.arn
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Scan"
+        ],
+        Resource = [
+          aws_dynamodb_table.scheduled_events.arn,
+          "${aws_dynamodb_table.scheduled_events.arn}/index/*"
+        ]
       }
     ]
   })
@@ -270,4 +292,181 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   function_name = aws_lambda_function.summarize_notes_lambda.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.note_created_rule.arn
+}
+
+# Bucket principal
+resource "aws_s3_bucket" "react_app" {
+  bucket = "notes-ai-3324"
+  force_destroy = true  # Permite borrar el bucket con contenido
+}
+
+# Control de ownership (requerido)
+resource "aws_s3_bucket_ownership_controls" "react_app_ownership" {
+  bucket = aws_s3_bucket.react_app.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+# Configuración de acceso público
+resource "aws_s3_bucket_public_access_block" "react_app_access" {
+  bucket = aws_s3_bucket.react_app.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+# Elimina completamente este recurso (es lo que causa el error):
+# resource "aws_s3_bucket_acl" "react_app_acl" {
+#   bucket = aws_s3_bucket.react_app.id
+#   acl    = "public-read"
+# }
+
+
+resource "aws_s3_bucket_website_configuration" "react_app_website" {
+  bucket = aws_s3_bucket.react_app.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
+  }
+
+  # Añade esta configuración para SPA
+  routing_rule {
+    condition {
+      http_error_code_returned_equals = "404"
+    }
+    redirect {
+      replace_key_prefix_with = "#/"
+    }
+  }
+}
+
+
+resource "aws_s3_bucket_cors_configuration" "react_app_cors" {
+  bucket = aws_s3_bucket.react_app.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
+
+# Política de acceso público
+resource "aws_s3_bucket_policy" "react_app_policy" {
+  depends_on = [
+    aws_s3_bucket_public_access_block.react_app_access,
+    aws_s3_bucket_ownership_controls.react_app_ownership
+  ]
+  
+  bucket = aws_s3_bucket.react_app.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject",
+        Effect    = "Allow",
+        Principal = "*",
+        Action    = [
+          "s3:GetObject",
+          "s3:GetObjectVersion"
+        ],
+        Resource = "${aws_s3_bucket.react_app.arn}/*"
+      },
+      {
+        Sid       = "RedirectForSPA",
+        Effect    = "Allow",
+        Principal = "*",
+        Action    = [
+          "s3:GetObject"
+        ],
+        Resource = [
+          "${aws_s3_bucket.react_app.arn}",
+          "${aws_s3_bucket.react_app.arn}/*"
+        ],
+        Condition = {
+          StringEquals = {
+            "s3:ExistingObjectTag/redirect" = "true"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudfront_distribution" "react_distribution" {
+  origin {
+    domain_name = aws_s3_bucket.react_app.bucket_regional_domain_name
+    origin_id   = "S3-ReactApp"
+
+    s3_origin_config {
+      origin_access_identity = aws_cloudfront_origin_access_identity.react_oai.cloudfront_access_identity_path
+    }
+  }
+
+  enabled             = true
+  is_ipv6_enabled     = true
+  default_root_object = "index.html"
+
+  default_cache_behavior {
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "S3-ReactApp"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 3600
+    max_ttl                = 86400
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+}
+
+resource "aws_cloudfront_origin_access_identity" "react_oai" {
+  comment = "OAI for React App"
+}
+
+output "cloudfront_domain" {
+  description = "The domain name of the CloudFront distribution"
+  value       = aws_cloudfront_distribution.react_distribution.domain_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "The identifier for the CloudFront distribution"
+  value       = aws_cloudfront_distribution.react_distribution.id
+}
+
+output "s3_website_endpoint" {
+  description = "The website endpoint for the S3 bucket"
+  value       = aws_s3_bucket.react_app.website_endpoint
+}
+
+output "api_gateway_url" {
+  description = "The URL of the API Gateway"
+  value       = aws_apigatewayv2_stage.default.invoke_url
 }
