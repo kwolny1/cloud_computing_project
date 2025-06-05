@@ -178,7 +178,7 @@ resource "aws_lambda_function" "summarize_notes_lambda" {
   function_name = "summarize_notes_lambda"
   runtime       = "python3.9"
   role          = aws_iam_role.lambda_exec_role.arn
-  handler       = "lambda_function.lambda_handler"
+  handler       = "lambda_function.lambda_function.lambda_handler"
   filename      = "lambda_function.zip"
   timeout       = 15
 
