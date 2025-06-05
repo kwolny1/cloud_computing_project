@@ -24,7 +24,7 @@ def lambda_handler(event, context):
         return handle_post(event)
     elif route == "/note" and method == "GET":
         return handle_get(event)
-    elif route == "/notes" and method == "GET":  # Nueva ruta
+    elif route == "/notes" and method == "GET":
         return handle_get_notes(event)
     elif route == "/note" and method == "PUT":
         return handle_update(event)
