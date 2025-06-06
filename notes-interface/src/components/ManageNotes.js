@@ -29,6 +29,19 @@ import {
 } from '@mui/icons-material';
 import { getAllNotes, updateNote, deleteNote } from '../services/api';
 
+// Función para extraer texto plano del contenido enriquecido
+const getPlainText = (content) => {
+  if (!content || !content.content) return '';
+  
+  return content.content
+    .map(node => 
+      node.content 
+        ? node.content.map(textNode => textNode.text).join(' ')
+        : ''
+    )
+    .join('\n');
+};
+
 const ManageNotes = () => {
   const [notes, setNotes] = useState([]);
   const [filteredNotes, setFilteredNotes] = useState([]);
@@ -36,7 +49,8 @@ const ManageNotes = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [editingNote, setEditingNote] = useState(null);
-  const [editText, setEditText] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState(null);
   const navigate = useNavigate();
@@ -45,7 +59,6 @@ const ManageNotes = () => {
     const fetchNotes = async () => {
       setIsLoading(true);
       try {
-        // Necesitarías implementar el endpoint /notes en tu backend
         const allNotes = await getAllNotes();
         setNotes(allNotes);
         setFilteredNotes(allNotes);
@@ -64,9 +77,9 @@ const ManageNotes = () => {
       const term = searchTerm?.toLowerCase() || '';
       const filtered = Array.isArray(notes) 
         ? notes.filter(note => {
-            const text = note.original_text?.toLowerCase() || '';
-            const phrases = note.key_phrases?.toLowerCase() || '';
-            return text.includes(term) || phrases.includes(term);
+            const title = note.title?.toLowerCase() || '';
+            const contentText = getPlainText(note.content)?.toLowerCase() || '';
+            return title.includes(term) || contentText.includes(term);
           })
         : [];
       setFilteredNotes(filtered);
@@ -78,7 +91,8 @@ const ManageNotes = () => {
 
   const handleEdit = (note) => {
     setEditingNote(note);
-    setEditText(note.original_text);
+    setEditTitle(note.title || '');
+    setEditContent(getPlainText(note.content));
   };
 
   const handleUpdate = async () => {
@@ -86,7 +100,16 @@ const ManageNotes = () => {
     
     try {
       setIsLoading(true);
-      const updatedNote = await updateNote(editingNote.note_id, editText);
+      const updatedNote = await updateNote(editingNote.note_id, {
+        title: editTitle,
+        content: {
+          type: 'doc',
+          content: [{
+            type: 'paragraph',
+            content: [{ type: 'text', text: editContent }]
+          }]
+        }
+      });
       setNotes(notes.map(n => n.note_id === updatedNote.note_id ? updatedNote : n));
       setEditingNote(null);
     } catch (err) {
@@ -150,9 +173,8 @@ const ManageNotes = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>ID</TableCell>
+                <TableCell>Title</TableCell>
                 <TableCell>Content</TableCell>
-                <TableCell>Key Phrases</TableCell>
                 <TableCell>Created</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
@@ -160,20 +182,29 @@ const ManageNotes = () => {
             <TableBody>
               {Array.isArray(filteredNotes) && filteredNotes.map((note) => (
                 <TableRow key={note.note_id}>
-                  <TableCell>{note.note_id.substring(0, 8)}...</TableCell>
+                  <TableCell>
+                    {editingNote?.note_id === note.note_id ? (
+                      <TextField
+                        fullWidth
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                      />
+                    ) : (
+                      note.title || 'Untitled'
+                    )}
+                  </TableCell>
                   <TableCell>
                     {editingNote?.note_id === note.note_id ? (
                       <TextField
                         fullWidth
                         multiline
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
                       />
                     ) : (
-                      note.original_text
+                      getPlainText(note.content)
                     )}
                   </TableCell>
-                  <TableCell>{note.key_phrases || 'N/A'}</TableCell>
                   <TableCell>
                     {new Date(note.created_at).toLocaleString()}
                   </TableCell>

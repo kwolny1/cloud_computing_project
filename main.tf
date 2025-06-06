@@ -11,6 +11,50 @@ resource "aws_s3_bucket" "pdf_bucket" {
   bucket = "student-notes-pdf-${random_id.bucket_suffix.hex}"
 }
 
+resource "aws_s3_bucket" "pdf_bucket_eu_west" {
+  bucket = "student-notes-pdf-west"
+  
+  # Elimina la línea "region" y usa provider en su lugar
+  provider = aws.eu_west
+}
+
+provider "aws" {
+  alias  = "eu_west"
+  region = "eu-west-1"
+}
+
+resource "aws_s3_bucket_public_access_block" "pdf_bucket_access" {
+  bucket = aws_s3_bucket.pdf_bucket.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "cross_region_access" {
+  bucket = aws_s3_bucket.pdf_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect    = "Allow",
+        Principal = {
+          AWS = "arn:aws:iam::711874660965:root"  # Reemplaza con tu ARN de usuario/rol
+        },
+        Action    = "s3:GetObject",
+        Resource  = "${aws_s3_bucket.pdf_bucket.arn}/*",
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = "eu-west-1"
+          }
+        }
+      }
+    ]
+  })
+}
+
 # DynamoDB for notes
 resource "aws_dynamodb_table" "study_notes" {
   name         = "StudyNotes"
@@ -44,6 +88,17 @@ resource "aws_dynamodb_table" "scheduled_events" {
     name            = "StartTimeIndex"
     hash_key        = "start_time"
     projection_type = "ALL"
+  }
+}
+
+resource "aws_dynamodb_table" "pdf_data" {
+  name         = "PDFData"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "pdf_id"
+
+  attribute {
+    name = "pdf_id"
+    type = "S"
   }
 }
 
@@ -135,15 +190,23 @@ resource "aws_iam_policy" "lambda_policy" {
 # Extra policy for S3 and events table
 resource "aws_iam_policy" "lambda_pdf_event_policy" {
   name        = "lambda_pdf_event_policy"
-  description = "Allow Lambda to access S3 and events table"
+  description = "Allow Lambda to access S3 and events table, Textract, and DynamoDB"
 
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
       {
         Effect = "Allow",
-        Action = ["s3:PutObject"],
-        Resource = "${aws_s3_bucket.pdf_bucket.arn}/*"
+        Action = [
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+          "s3:GetObject",
+          ],
+        Resource = [
+          "${aws_s3_bucket.pdf_bucket.arn}",
+          "${aws_s3_bucket.pdf_bucket.arn}/*"
+        ]
       },
       {
         Effect = "Allow",
@@ -158,10 +221,22 @@ resource "aws_iam_policy" "lambda_pdf_event_policy" {
           aws_dynamodb_table.scheduled_events.arn,
           "${aws_dynamodb_table.scheduled_events.arn}/index/*"
         ]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:Scan",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
+        ],
+        Resource = aws_dynamodb_table.pdf_data.arn
       }
     ]
   })
 }
+
 
 resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
   role       = aws_iam_role.lambda_exec_role.name
@@ -186,7 +261,9 @@ resource "aws_lambda_function" "summarize_notes_lambda" {
     variables = {
       DYNAMO_TABLE = aws_dynamodb_table.study_notes.name
       EVENT_TABLE  = aws_dynamodb_table.scheduled_events.name
+      PDF_DATA_TABLE = aws_dynamodb_table.pdf_data.name
       PDF_BUCKET   = aws_s3_bucket.pdf_bucket.bucket
+      HF_API_KEY      = "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" 
     }
   }
 }
@@ -197,9 +274,11 @@ resource "aws_apigatewayv2_api" "api" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = ["*"]
+    allow_origins = ["*"]  # En producción, reemplaza con tu dominio específico
     allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["Content-Type"]
+    allow_headers = ["Content-Type", "Authorization"]  # Añade más headers si es necesario
+    expose_headers = ["Content-Type"]
+    max_age = 3600
   }
 }
 
@@ -223,6 +302,12 @@ resource "aws_apigatewayv2_route" "get_note_route" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
 
+resource "aws_apigatewayv2_route" "get_notes_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /notes"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
 resource "aws_apigatewayv2_route" "update_note_route" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "PUT /note"
@@ -241,11 +326,43 @@ resource "aws_apigatewayv2_route" "upload_pdf_route" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
 
+resource "aws_apigatewayv2_route" "get_pdfs_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /pdfs"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "delete_pdf_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "DELETE /pdf"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
 resource "aws_apigatewayv2_route" "schedule_event_route" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "POST /schedule-event"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
+
+
+resource "aws_apigatewayv2_route" "extract_text_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "POST /pdf/extract"  # Cambiado
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "summarize_text_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "POST /pdf/summarize"  # Cambiado
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "get_pdf_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /pdf"  # Cambiado
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
 
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.api.id
@@ -299,6 +416,7 @@ resource "aws_s3_bucket" "react_app" {
   bucket = "notes-ai-3324"
   force_destroy = true  # Permite borrar el bucket con contenido
 }
+
 
 # Control de ownership (requerido)
 resource "aws_s3_bucket_ownership_controls" "react_app_ownership" {
@@ -359,7 +477,6 @@ resource "aws_s3_bucket_cors_configuration" "react_app_cors" {
     max_age_seconds = 3000
   }
 }
-
 
 # Política de acceso público
 resource "aws_s3_bucket_policy" "react_app_policy" {

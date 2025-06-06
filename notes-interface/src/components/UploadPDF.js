@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Box, 
@@ -11,24 +11,41 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemIcon
+  ListItemIcon,
+  ListItemButton,
+  Chip
 } from '@mui/material';
 import { 
   ArrowBack as ArrowBackIcon,
   CloudUpload as CloudUploadIcon,
   PictureAsPdf as PdfIcon,
   CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon
+  Delete as DeleteIcon,
+  PlayCircle as ProcessIcon
 } from '@mui/icons-material';
-import { uploadPDF, extractPDFText } from '../services/api';
+import { uploadPDF, getPDFs, deletePDF } from '../services/api';
 
 const UploadPDF = () => {
   const [file, setFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [pdfs, setPdfs] = useState([]);
   const navigate = useNavigate();
+
+  // Cargar PDFs al montar el componente
+  useEffect(() => {
+    fetchPDFs();
+  }, []);
+
+  const fetchPDFs = async () => {
+    try {
+      const response = await getPDFs();
+      setPdfs(response.files || []);
+    } catch (err) {
+      setError('Failed to fetch PDFs');
+    }
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -51,24 +68,24 @@ const UploadPDF = () => {
     setSuccess(null);
 
     try {
-      const uploadResponse = await uploadPDF(file);
-      console.log("llega")
-      //const textResponse = await extractPDFText(uploadResponse.id);
-      
-      setSuccess('PDF uploaded and processed successfully!');
-      setUploadedFiles(prev => [
-        ...prev,
-        {
-          name: file.name,
-          id: uploadResponse.id,
-          //text: textResponse.text
-        }
-      ]);
+      await uploadPDF(file);
+      setSuccess('PDF uploaded successfully!');
       setFile(null);
+      fetchPDFs(); // Actualizar la lista
     } catch (err) {
       setError(err.message || 'Failed to upload PDF');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (pdfId) => {
+    try {
+      await deletePDF(pdfId);
+      setPdfs(pdfs.filter(pdf => pdf.id !== pdfId));
+      setSuccess('PDF deleted successfully!');
+    } catch (err) {
+      setError('Failed to delete PDF');
     }
   };
 
@@ -79,11 +96,13 @@ const UploadPDF = () => {
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5" component="h2">
-          Upload PDF
+          PDF Management
         </Typography>
       </Box>
 
-      <Box sx={{ mb: 4 }}>
+      {/* Sección de subida */}
+      <Box sx={{ mb: 4, p: 3, border: '1px dashed #ccc', borderRadius: '8px' }}>
+        <Typography variant="h6" gutterBottom>Upload New PDF</Typography>
         <input
           accept="application/pdf"
           style={{ display: 'none' }}
@@ -103,9 +122,11 @@ const UploadPDF = () => {
         </label>
         
         {file && (
-          <Typography variant="body1" sx={{ mt: 1 }}>
-            Selected: {file.name}
-          </Typography>
+          <Chip 
+            label={file.name} 
+            onDelete={() => setFile(null)} 
+            sx={{ ml: 1 }} 
+          />
         )}
 
         <Button
@@ -120,38 +141,47 @@ const UploadPDF = () => {
         </Button>
       </Box>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
+      {/* Sección de PDFs existentes */}
+      <Box sx={{ mt: 4 }}>
+        <Typography variant="h6" gutterBottom>Existing PDFs</Typography>
+        <List dense>
+          {pdfs.map((pdf) => (
+            <ListItem 
+              key={pdf.id}
+              secondaryAction={
+                <Box>
+                  <IconButton 
+                    edge="end" 
+                    onClick={() => navigate(`/process-pdf/${pdf.id}`)}
+                    color="primary"
+                  >
+                    <ProcessIcon />
+                  </IconButton>
+                  <IconButton 
+                    edge="end" 
+                    onClick={() => handleDelete(pdf.id)}
+                    color="error"
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Box>
+              }
+            >
+              <ListItemIcon>
+                <PdfIcon color="primary" />
+              </ListItemIcon>
+              <ListItemText
+                primary={pdf.name}
+                secondary={`Uploaded: ${new Date(pdf.uploadDate).toLocaleString()}`}
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Box>
 
-      {success && (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          {success}
-        </Alert>
-      )}
-
-      {uploadedFiles.length > 0 && (
-        <Box>
-          <Typography variant="h6" gutterBottom>
-            Uploaded PDFs
-          </Typography>
-          <List>
-            {uploadedFiles.map((pdf, index) => (
-              <ListItem key={index}>
-                <ListItemIcon>
-                  <PdfIcon color="primary" />
-                </ListItemIcon>
-                <ListItemText
-                  primary={pdf.name}
-                  secondary={`ID: ${pdf.id}`}
-                />
-              </ListItem>
-            ))}
-          </List>
-        </Box>
-      )}
+      {/* Mensajes de estado */}
+      {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
     </Paper>
   );
 };

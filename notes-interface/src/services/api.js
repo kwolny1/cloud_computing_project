@@ -10,9 +10,12 @@ const api = axios.create({
 });
 
 // Notes API
-export const createNote = async (text) => {
+export const createNote = async (noteData) => {
   try {
-    const response = await api.post('/summarize', { text });
+    const response = await api.post('/summarize', { 
+      title: noteData.title, 
+      content: noteData.content 
+    });
     return response.data;
   } catch (error) {
     console.error('Error creating note:', error);
@@ -77,12 +80,66 @@ export const uploadPDF = async (file) => {
   }
 };
 
-export const extractPDFText = async (pdfId) => {
+
+export const getPDFs = async () => {
+  const response = await api.get('/pdfs');
+  return response.data;
+};
+
+export const deletePDF = async (pdfId) => {
+  //await api.delete(`/pdf/${pdfId}`);
+
   try {
-    const response = await api.get(`/pdf/${pdfId}/text`);
+    const response = await api.delete('/pdf', { params: { pdf_id: pdfId } });
     return response.data;
   } catch (error) {
-    console.error('Error extracting PDF text:', error);
+    console.error('Error deleting pdf:', error);
+    throw error.response?.data || error.message;
+  }
+};
+
+//getPDFText? processPDF (un post)?
+
+// Obtener metadatos del PDF
+//export const getPDFData = async (pdf_id) => {
+//  return api.get(`/pdf/${pdf_id}`);    //si es extractText: .post(`/pdf/${pdf_id}/extract`)
+//};
+
+// Extraer texto
+export const extractText = async (pdfId) => {
+  try {
+    const response = await api.post('/pdf/extract', null, { 
+      params: { pdf_id: pdfId } 
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error extracting text:', error);
+    throw error.response?.data || error.message;
+  }
+};
+
+// Resumir texto
+export const summarizeText = async (pdfId) => {
+  try {
+    const response = await api.post('/pdf/summarize', null, { 
+      params: { pdf_id: pdfId } 
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error summarizing text:', error);
+    throw error.response?.data || error.message;
+  }
+};
+
+// Obtener metadatos del PDF
+export const getPDFData = async (pdfId) => {
+  try {
+    const response = await api.get('/pdf', { 
+      params: { pdf_id: pdfId } 
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching PDF data:', error);
     throw error.response?.data || error.message;
   }
 };
@@ -117,3 +174,7 @@ export const deleteEvent = async (eventId) => {
     throw error.response?.data || error.message;
   }
 };
+
+export const getPlainText = (content) => {
+  return content?.content?.map(node => node.text).join(' ') || ''
+}

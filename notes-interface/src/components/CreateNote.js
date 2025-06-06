@@ -11,9 +11,18 @@ import {
 } from '@mui/material';
 import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { createNote } from '../services/api';
+import RichTextEditor from './RichTextEditor';
+import '../styles/global.css';
 
 const CreateNote = () => {
-  const [text, setText] = useState('');
+  const [title, setTitle] = useState('')
+  const [content, setContent] = useState({
+    type: 'doc',
+    content: [{
+      type: 'paragraph',
+      content: [{ type: 'text', text: '' }]
+    }]
+  })
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -26,9 +35,18 @@ const CreateNote = () => {
     setSuccess(null);
     
     try {
-      const newNote = await createNote(text);
+      console.log("DATOS: ", title, " ", content);
+      const newNote = await createNote({ title, content })
       setSuccess('Note created successfully!');
-      setText('');
+      setTitle('');
+      setContent({
+        type: 'doc',
+        content: [{
+          type: 'paragraph',
+          content: [{ type: 'text', text: '' }]
+        }]
+      });
+      //setText('');
     } catch (err) {
       setError(err.message || 'Failed to create note');
     } finally {
@@ -49,15 +67,16 @@ const CreateNote = () => {
       
       <form onSubmit={handleSubmit}>
         <TextField
-          label="Note Content"
-          multiline
-          rows={6}
+          label="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           fullWidth
-          variant="outlined"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          required
-          sx={{ mb: 3 }}
+          sx={{ mb: 2 }}
+        />
+        
+        <RichTextEditor 
+          content={content}
+          onChange={setContent}
         />
         
         <Button 

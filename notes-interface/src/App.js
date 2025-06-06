@@ -7,6 +7,7 @@ import CreateNote from './components/CreateNote';
 import ManageNotes from './components/ManageNotes';
 import UploadPDF from './components/UploadPDF';
 import ScheduleEvent from './components/ScheduleEvent';
+import ProcessPDF from './components/ProcessPDF';
 import './styles/global.css';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -54,6 +55,7 @@ const App = () => {
             <Route path="/manage-notes" element={<ManageNotes />} />
             <Route path="/upload-pdf" element={<UploadPDF />} />
             <Route path="/schedule-event" element={<ScheduleEvent />} />
+            <Route path="/process-pdf/:pdf_id" element={<ProcessPDF />} />
           </Routes>
         </Router>
       </LocalizationProvider>
