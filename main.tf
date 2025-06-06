@@ -263,7 +263,7 @@ resource "aws_lambda_function" "summarize_notes_lambda" {
       EVENT_TABLE  = aws_dynamodb_table.scheduled_events.name
       PDF_DATA_TABLE = aws_dynamodb_table.pdf_data.name
       PDF_BUCKET   = aws_s3_bucket.pdf_bucket.bucket
-      HF_API_KEY      = "INSERT_HUGGINF_FACE_API_KEY" 
+      HF_API_KEY      = "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" 
     }
   }
 }
