@@ -263,7 +263,7 @@ resource "aws_lambda_function" "summarize_notes_lambda" {
       EVENT_TABLE  = aws_dynamodb_table.scheduled_events.name
       PDF_DATA_TABLE = aws_dynamodb_table.pdf_data.name
       PDF_BUCKET   = aws_s3_bucket.pdf_bucket.bucket
-      HF_API_KEY      = "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" 
+      HF_API_KEY      = "INSERT_HUGGINF_FACE_API_KEY" 
     }
   }
 }
@@ -416,11 +416,6 @@ resource "aws_s3_bucket" "react_app" {
   force_destroy = true 
 }
 
-<<<<<<< HEAD
-
-# Control de ownership (requerido)
-=======
->>>>>>> 4580fde9e613260e112d928f5ad7f6f6ad008877
 resource "aws_s3_bucket_ownership_controls" "react_app_ownership" {
   bucket = aws_s3_bucket.react_app.id
   rule {
@@ -472,11 +467,6 @@ resource "aws_s3_bucket_cors_configuration" "react_app_cors" {
   }
 }
 
-<<<<<<< HEAD
-# Política de acceso público
-=======
-
->>>>>>> 4580fde9e613260e112d928f5ad7f6f6ad008877
 resource "aws_s3_bucket_policy" "react_app_policy" {
   bucket = aws_s3_bucket.react_app.id
 
